@@ -1,0 +1,17 @@
+# Optional queue worker.
+# Install via CloudPanel's Supervisor UI or:
+#   sudo cp supervisor.conf.example /etc/supervisor/conf.d/lara-crud-worker.conf
+#   sudo supervisorctl reread && sudo supervisorctl update
+
+[program:site-user]
+process_name=%(program_name)s_%(process_num)02d
+command=/usr/bin/php /home/site-user/htdocs/your-domain.com/current/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=lara-crud
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/home/site-user/htdocs/your-domain.com/shared/storage/logs/worker.log
+stopwaitsecs=3600

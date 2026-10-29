@@ -1,0 +1,40 @@
+# REFERENCE ONLY - CloudPanel already generates and manages this vhost.
+#
+# The deploy script keeps CloudPanel's default document root unchanged:
+#   /home/site-user/htdocs/your-domain.com/public
+# by replacing `public` with a symlink to `current/public`. That makes the
+# release switch atomic without editing the vhost or reloading Nginx.
+#
+# Only use a vhost like this if you prefer to point the root directly at
+# `current/public`. If you do, change the CloudPanel domain root to:
+#   /home/site-user/htdocs/your-domain.com/current/public
+# and remove/rename the managed `public` symlink.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.com;
+
+    root /home/site-user/htdocs/your-domain.com/public;
+    index index.php;
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}

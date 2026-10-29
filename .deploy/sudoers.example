@@ -1,0 +1,9 @@
+# Optional one-time setup for CloudPanel PHP sites.
+#
+# PHP keeps a realpath cache, so switching `current` is not visible to PHP-FPM
+#   sudo cp .deploy/sudoers.example /etc/sudoers.d/lara-crud-deploy
+#   sudo chmod 440 /etc/sudoers.d/lara-crud-deploy
+#   sudo visudo -c
+#
+# Replace site-user with the CloudPanel site user if it differs.
+site-user ALL = NOPASSWD: /usr/bin/systemctl reload php*-fpm

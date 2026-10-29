@@ -1,0 +1,102 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          missing=0
+          for name in VPS_HOST VPS_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Prepare Remote Deploy Directory
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            app_dir="${{ secrets.VPS_APP_DIR }}"
+            app_dir="${app_dir%/}"
+            mkdir -p "$app_dir/.deploy"
+            chmod 755 "$app_dir/.deploy"
+
+      - name: Upload Deployment Toolkit
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: ".deploy/*.sh,.deploy/*.example,.deploy/common,.deploy/deploy"
+          target: "${{ secrets.VPS_APP_DIR }}/.deploy"
+          strip_components: 1
+          overwrite: true
+
+      - name: Encode Production Environment
+        id: envfile
+        env:
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
+        run: |
+          if [ -n "${PRODUCTION_ENV:-}" ]; then
+            value="$(printf '%s' "$PRODUCTION_ENV" | base64 -w 0)"
+            echo "b64=$value" >> "$GITHUB_OUTPUT"
+          else
+            echo "b64=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy Zero Downtime
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ secrets.VPS_APP_DIR }}
+          GIT_REPO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+          BRANCH: ${{ github.ref_name }}
+          PRODUCTION_ENV_B64: ${{ steps.envfile.outputs.b64 }}
+          PHP_BIN: ${{ secrets.PHP_BIN }}
+          COMPOSER_BIN: ${{ secrets.COMPOSER_BIN }}
+          PHP_FPM_SERVICE: ${{ secrets.PHP_FPM_SERVICE }}
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          KEEP_RELEASES: ${{ secrets.KEEP_RELEASES || '5' }}
+          SKIP_ASSETS: ${{ secrets.SKIP_ASSETS || '0' }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: APP_DIR,GIT_REPO,BRANCH,PRODUCTION_ENV_B64,PHP_BIN,COMPOSER_BIN,PHP_FPM_SERVICE,HEALTHCHECK_URL,KEEP_RELEASES,SKIP_ASSETS
+          command_timeout: 20m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            export APP_DIR="${APP_DIR%/}"
+            cd "$APP_DIR"
+            find .deploy -type f -name '*.sh' -exec chmod +x {} +
+            bash .deploy/deploy/deploy.sh
