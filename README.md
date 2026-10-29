@@ -29,7 +29,7 @@ Ship Laravel updates to CloudPanel with zero downtime. Every push builds a new r
 
 1. Clone this repository into your home directory:
    ```bash
-   git clone https://github.com/<your-org>/zero-downtime-deploy.git ~/zero-downtime-deploy
+   git clone https://github.com/ibrahimjml/zero-downtime-deploy.git ~/zero-downtime-deploy
    ```
 
 2. Copy `.github` and `.deploy` into the root of your Laravel project:
